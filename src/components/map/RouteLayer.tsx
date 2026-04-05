@@ -24,9 +24,9 @@ export default function RouteLayer({
       positions={positions}
       pathOptions={{
         color,
-        weight: 4,
-        opacity: 0.85,
-        dashArray: "10 10",
+        weight: 5,
+        opacity: 0.9,
+        dashArray: "12 8",
         className: "animated-route",
       }}
     />

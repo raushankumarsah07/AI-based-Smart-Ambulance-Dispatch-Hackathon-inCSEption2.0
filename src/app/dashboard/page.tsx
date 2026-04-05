@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { severityColor } from "@/lib/utils";
@@ -44,51 +44,6 @@ function getTimeSince(date: Date): string {
   return `${Math.floor(diffHr / 24)}d ago`;
 }
 
-/**
- * Generate a simulated route between two coordinates with curved intermediate
- * points that approximate road-like paths (no OSRM call needed).
- */
-function generateSimulatedRoute(
-  from: Coordinates,
-  to: Coordinates,
-  numPoints: number = 18
-): Coordinates[] {
-  const points: Coordinates[] = [from];
-
-  // Seeded-ish random that stays stable across renders for a given pair
-  const seed = Math.abs(from.lat * 1000 + to.lng * 1000) % 1;
-  const rng = (i: number): number =>
-    ((Math.sin(seed * 9999 + i * 7919) * 43758.5453) % 1 + 1) % 1;
-
-  for (let i = 1; i < numPoints; i++) {
-    const t = i / numPoints;
-    // Base linear interpolation
-    const baseLat = from.lat + (to.lat - from.lat) * t;
-    const baseLng = from.lng + (to.lng - from.lng) * t;
-
-    // Perpendicular offset for curve (stronger in the middle, fades at ends)
-    const curveFactor = Math.sin(t * Math.PI) * 0.012; // ~1.3 km max offset
-    const perpLat = -(to.lng - from.lng); // perpendicular direction
-    const perpLng = to.lat - from.lat;
-    const perpLen = Math.sqrt(perpLat ** 2 + perpLng ** 2) || 1;
-
-    // Combine a smooth curve with small random jitter to look road-like
-    const jitterLat = (rng(i * 2) - 0.5) * 0.003;
-    const jitterLng = (rng(i * 2 + 1) - 0.5) * 0.003;
-
-    points.push({
-      lat: baseLat + (perpLat / perpLen) * curveFactor + jitterLat,
-      lng: baseLng + (perpLng / perpLen) * curveFactor + jitterLng,
-    });
-  }
-
-  points.push(to);
-  return points;
-}
-
-/**
- * Find the hospital geographically closest to a given location.
- */
 function findNearestHospital(location: Coordinates) {
   let best = hospitals[0];
   let bestDist = Infinity;
@@ -104,15 +59,22 @@ function findNearestHospital(location: Coordinates) {
   return best;
 }
 
+interface ActiveRoute {
+  id: string;
+  coordinates: Coordinates[];
+  color: string;
+  label?: string;
+}
+
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>("Emergencies");
+  const [activeRoutes, setActiveRoutes] = useState<ActiveRoute[]>([]);
   const stats = getDashboardStats();
 
   const activeEmergencies = emergencyHistory.filter(
     (e) => e.status !== "completed"
   );
 
-  // Recent activity: last 5 emergencies sorted by time
   const recentActivity = [...emergencyHistory]
     .sort(
       (a, b) =>
@@ -120,51 +82,70 @@ export default function DashboardPage() {
     )
     .slice(0, 5);
 
-  // ---- Generate active dispatch routes ----
-  const activeRoutes = useMemo(() => {
-    const routes: Array<{
-      id: string;
-      coordinates: Coordinates[];
-      color: string;
-      label?: string;
-    }> = [];
+  // Fetch real OSRM routes for active dispatches on mount
+  useEffect(() => {
+    async function fetchActiveRoutes() {
+      const dispatchedAmbulances = ambulances.filter(
+        (a) => a.status === "dispatched" || a.status === "en_route"
+      );
+      const ongoingEmergencies = emergencyHistory.filter(
+        (e) => e.status === "in_progress" || e.status === "dispatched"
+      );
 
-    // Find dispatched / en_route ambulances
-    const dispatchedAmbulances = ambulances.filter(
-      (a) => a.status === "dispatched" || a.status === "en_route"
-    );
+      const limit = Math.min(3, dispatchedAmbulances.length, ongoingEmergencies.length);
+      if (limit === 0) return;
 
-    // Find in_progress / dispatched emergencies
-    const ongoingEmergencies = emergencyHistory.filter(
-      (e) => e.status === "in_progress" || e.status === "dispatched"
-    );
+      try {
+        const { getRoute, generateFallbackRoute } = await import("@/lib/routing-service");
+        const routes: ActiveRoute[] = [];
 
-    // Build up to 3 route pairs (ambulance -> emergency, emergency -> hospital)
-    const limit = Math.min(3, dispatchedAmbulances.length, ongoingEmergencies.length);
+        for (let i = 0; i < limit; i++) {
+          const amb = dispatchedAmbulances[i];
+          const emg = ongoingEmergencies[i];
+          const hosp = findNearestHospital(emg.location);
 
-    for (let i = 0; i < limit; i++) {
-      const amb = dispatchedAmbulances[i];
-      const emg = ongoingEmergencies[i];
-      const hospital = findNearestHospital(emg.location);
+          try {
+            // Fetch real road route: ambulance -> emergency
+            const leg1 = await getRoute([amb.location, emg.location]);
+            routes.push({
+              id: `route-to-patient-${amb.id}`,
+              coordinates: leg1.coordinates,
+              color: "#06b6d4",
+              label: `${amb.callSign} → Patient`,
+            });
 
-      // Leg 1: Ambulance -> Emergency (cyan)
-      routes.push({
-        id: `route-to-patient-${amb.id}`,
-        coordinates: generateSimulatedRoute(amb.location, emg.location, 16),
-        color: "#06b6d4",
-        label: `${amb.callSign} -> Patient`,
-      });
+            // Fetch real road route: emergency -> hospital
+            const leg2 = await getRoute([emg.location, hosp.location]);
+            routes.push({
+              id: `route-to-hospital-${amb.id}`,
+              coordinates: leg2.coordinates,
+              color: "#22c55e",
+              label: `Patient → ${hosp.name.split(" ")[0]}`,
+            });
+          } catch {
+            // Fallback for this pair if OSRM fails
+            const fb1 = generateFallbackRoute([amb.location, emg.location]);
+            routes.push({
+              id: `route-to-patient-${amb.id}`,
+              coordinates: fb1.coordinates,
+              color: "#06b6d4",
+            });
+            const fb2 = generateFallbackRoute([emg.location, hosp.location]);
+            routes.push({
+              id: `route-to-hospital-${amb.id}`,
+              coordinates: fb2.coordinates,
+              color: "#22c55e",
+            });
+          }
+        }
 
-      // Leg 2: Emergency -> Hospital (green)
-      routes.push({
-        id: `route-to-hospital-${amb.id}`,
-        coordinates: generateSimulatedRoute(emg.location, hospital.location, 18),
-        color: "#22c55e",
-        label: `Patient -> ${hospital.name.split(" ")[0]}`,
-      });
+        setActiveRoutes(routes);
+      } catch {
+        // routing-service import failed — no routes shown
+      }
     }
 
-    return routes;
+    fetchActiveRoutes();
   }, []);
 
   return (

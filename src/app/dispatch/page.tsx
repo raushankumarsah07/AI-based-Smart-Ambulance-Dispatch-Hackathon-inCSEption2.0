@@ -347,8 +347,18 @@ export default function DispatchPage() {
         );
         setRouteData(result);
       } catch {
-        // Route fetch failed — show map without route polyline
-        setRouteData(null);
+        // OSRM failed — use fallback straight-line route
+        try {
+          const routingMod = await import("@/lib/routing-service");
+          const fallback = routingMod.generateFallbackRoute([
+            selectedAmbulance.location,
+            emergencyCoords,
+            selectedHospital.location,
+          ]);
+          setRouteData(fallback);
+        } catch {
+          setRouteData(null);
+        }
       } finally {
         setRouteLoading(false);
       }
