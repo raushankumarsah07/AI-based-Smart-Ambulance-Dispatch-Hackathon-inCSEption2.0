@@ -3,7 +3,7 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
-import { severityColor, severityLabel } from "@/lib/utils";
+import { severityColor } from "@/lib/utils";
 import {
   ambulances,
   hospitals,
@@ -21,7 +21,6 @@ import {
   Building2,
   Clock,
   AlertTriangle,
-  Heart,
 } from "lucide-react";
 
 const DashboardMap = dynamic(

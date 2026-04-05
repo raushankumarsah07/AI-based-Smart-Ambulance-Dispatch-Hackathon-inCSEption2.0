@@ -17,6 +17,7 @@ import type {
   DispatchScore,
   Ambulance,
   Hospital,
+  Emergency,
   SeverityLevel,
   Specialization,
 } from "@/lib/types";
@@ -267,11 +268,22 @@ export default function DispatchPage() {
       setAmbulances(usedAmbulances);
       setHospitals(usedHospitals);
 
+      const emergencyObj: Emergency = {
+        id: `em-${Date.now()}`,
+        callerName: data.callerName,
+        callerPhone: data.callerPhone,
+        description: data.description,
+        location: { lat: data.lat, lng: data.lng },
+        address: data.address,
+        severity: triage.severity,
+        specialization: triage.specialization,
+        status: "pending",
+        createdAt: new Date(),
+      };
       scores = dispatchMod.calculateDispatchScores(
-        triage,
+        emergencyObj,
         usedAmbulances,
-        usedHospitals,
-        { lat: data.lat, lng: data.lng }
+        usedHospitals
       );
     } catch {
       // Modules not yet available — use fallback

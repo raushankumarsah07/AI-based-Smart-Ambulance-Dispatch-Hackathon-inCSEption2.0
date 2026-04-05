@@ -1,7 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { severityColor, severityLabel } from "@/lib/utils";
+import { cn, severityColor, severityLabel } from "@/lib/utils";
 import type { Emergency, SeverityLevel } from "@/lib/types";
 import { MapPin, Clock, AlertTriangle } from "lucide-react";
 
