@@ -250,11 +250,6 @@ const EQUIPMENT_MAP: Record<Specialization, string[]> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Check whether any keyword from a list appears in the (lowercased) text. */
-function matchesAny(text: string, keywords: string[]): boolean {
-  return keywords.some((kw) => text.includes(kw));
-}
-
 /** Count how many keywords from a list appear in the text. */
 function countMatches(text: string, keywords: string[]): number {
   return keywords.filter((kw) => text.includes(kw)).length;
