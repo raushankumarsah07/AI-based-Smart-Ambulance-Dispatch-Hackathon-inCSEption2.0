@@ -276,7 +276,7 @@ export default function Home() {
             <Heart className="h-4 w-4 text-danger" />
             <span className="text-sm text-muted">
               <span className="font-semibold text-foreground">SmartAmbSys</span>{" "}
-              &mdash; Built for Smart India Hackathon 2024
+              &mdash; AI-Powered Emergency Response
             </span>
           </div>
           <div className="flex items-center gap-4 text-xs text-muted">
