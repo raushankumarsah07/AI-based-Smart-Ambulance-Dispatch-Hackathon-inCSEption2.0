@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { Hospital } from "@/lib/types";
-import { Star, Bed, HeartPulse } from "lucide-react";
+import { Star, HeartPulse } from "lucide-react";
 
 interface HospitalListProps {
   hospitals: Hospital[];

@@ -12,7 +12,6 @@ import EmergencyForm from "@/components/dispatch/EmergencyForm";
 import TriageResultCard from "@/components/dispatch/TriageResultCard";
 import DispatchResultCard from "@/components/dispatch/DispatchResultCard";
 import { triageEmergency } from "@/lib/triage-engine";
-import { cn } from "@/lib/utils";
 import type {
   TriageResult,
   DispatchScore,
