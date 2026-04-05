@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import dynamic from "next/dynamic";
 import L from "leaflet";
 import { Marker, Popup, useMap } from "react-leaflet";
 import {
@@ -12,16 +11,11 @@ import {
   Siren,
   Loader2,
 } from "lucide-react";
+import MapContainer from "@/components/map/MapContainer";
 import AmbulanceMarker from "@/components/map/AmbulanceMarker";
 import HospitalMarker from "@/components/map/HospitalMarker";
 import RouteLayer from "@/components/map/RouteLayer";
 import type { Coordinates, Ambulance, Hospital } from "@/lib/types";
-
-// Dynamically import MapContainer with SSR disabled (Leaflet needs window)
-const MapContainer = dynamic(
-  () => import("@/components/map/MapContainer"),
-  { ssr: false }
-);
 
 // ---------------------------------------------------------------------------
 // Types

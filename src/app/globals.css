@@ -115,3 +115,15 @@ body {
   stroke-dasharray: 10 10;
   animation: dash 1s linear infinite;
 }
+
+/* Fade-slide-in animation for route map panel */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

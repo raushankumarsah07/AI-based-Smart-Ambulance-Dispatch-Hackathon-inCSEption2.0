@@ -459,6 +459,30 @@ export default function DispatchPage() {
             </div>
           </div>
         )}
+
+        {/* Route Map — shown after dispatch confirmation */}
+        {phase === "confirmed" && confirmedIndex !== null && emergencyCoords && (
+          <div
+            className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+            style={{ animation: "fadeSlideIn 0.5s ease-out forwards" }}
+          >
+            <div className="flex items-center gap-2.5 pt-2 pb-3">
+              <Navigation className="h-4 w-4 text-cyan-400" />
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-300">
+                Fastest Route
+              </h3>
+            </div>
+            <RouteMapPanel
+              ambulanceLocation={findAmbulance(dispatchResults[confirmedIndex].ambulanceId).location}
+              emergencyLocation={emergencyCoords}
+              hospitalLocation={findHospital(dispatchResults[confirmedIndex].hospitalId).location}
+              ambulance={findAmbulance(dispatchResults[confirmedIndex].ambulanceId)}
+              hospital={findHospital(dispatchResults[confirmedIndex].hospitalId)}
+              routeData={routeData}
+              isLoading={routeLoading}
+            />
+          </div>
+        )}
       </div>
     );
   }
