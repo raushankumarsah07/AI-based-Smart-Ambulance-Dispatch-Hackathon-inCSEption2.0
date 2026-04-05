@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Brain,
   Activity,
   Loader2,
   CheckCircle2,
   Siren,
+  Navigation,
 } from "lucide-react";
 import EmergencyForm from "@/components/dispatch/EmergencyForm";
 import TriageResultCard from "@/components/dispatch/TriageResultCard";
@@ -18,9 +20,15 @@ import type {
   Ambulance,
   Hospital,
   Emergency,
+  Coordinates,
   SeverityLevel,
   Specialization,
 } from "@/lib/types";
+
+const RouteMapPanel = dynamic(
+  () => import("@/components/dispatch/RouteMapPanel"),
+  { ssr: false }
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fallback demo data — used when simulation-data / dispatch-algorithm are not
@@ -198,6 +206,21 @@ export default function DispatchPage() {
   const [confirmedIndex, setConfirmedIndex] = useState<number | null>(null);
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
 
+  // Route map state
+  const [routeData, setRouteData] = useState<{
+    coordinates: Coordinates[];
+    totalDistanceKm: number;
+    totalDurationMinutes: number;
+    legs: Array<{
+      from: string;
+      to: string;
+      distanceKm: number;
+      durationMinutes: number;
+    }>;
+  } | null>(null);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [emergencyCoords, setEmergencyCoords] = useState<Coordinates | null>(null);
+
   // Data maps for looking up ambulance/hospital by ID
   const [ambulances, setAmbulances] = useState<Ambulance[]>(DEMO_AMBULANCES);
   const [hospitals, setHospitals] = useState<Hospital[]>(DEMO_HOSPITALS);
@@ -216,6 +239,9 @@ export default function DispatchPage() {
     setTriageResult(null);
     setDispatchResults([]);
     setConfirmedIndex(null);
+    setRouteData(null);
+    setRouteLoading(false);
+    setEmergencyCoords({ lat: data.lat, lng: data.lng });
 
     // Artificial delay for demo
     await new Promise((r) => setTimeout(r, 1500));
@@ -299,10 +325,33 @@ export default function DispatchPage() {
   // ─── Confirm dispatch ──────────────────────────────────────────────────────
   function handleConfirm(index: number) {
     setConfirmingIndex(index);
-    setTimeout(() => {
+    setTimeout(async () => {
       setConfirmingIndex(null);
       setConfirmedIndex(index);
       setPhase("confirmed");
+
+      // Fetch the route after confirming dispatch
+      const selectedScore = dispatchResults[index];
+      if (!selectedScore || !emergencyCoords) return;
+
+      const selectedAmbulance = findAmbulance(selectedScore.ambulanceId);
+      const selectedHospital = findHospital(selectedScore.hospitalId);
+
+      setRouteLoading(true);
+      try {
+        const routingMod = await import("@/lib/routing-service");
+        const result = await routingMod.getDispatchRoute(
+          selectedAmbulance.location,
+          emergencyCoords,
+          selectedHospital.location
+        );
+        setRouteData(result);
+      } catch {
+        // Route fetch failed — show map without route polyline
+        setRouteData(null);
+      } finally {
+        setRouteLoading(false);
+      }
     }, 1200);
   }
 

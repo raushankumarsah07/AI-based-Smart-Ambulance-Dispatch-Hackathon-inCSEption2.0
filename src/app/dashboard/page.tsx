@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { severityColor } from "@/lib/utils";
@@ -10,6 +10,7 @@ import {
   emergencyHistory,
   getDashboardStats,
 } from "@/lib/simulation-data";
+import type { Coordinates } from "@/lib/types";
 import StatCard from "@/components/ui/StatCard";
 import Badge from "@/components/ui/Badge";
 import AmbulanceList from "@/components/dashboard/AmbulanceList";
@@ -43,6 +44,66 @@ function getTimeSince(date: Date): string {
   return `${Math.floor(diffHr / 24)}d ago`;
 }
 
+/**
+ * Generate a simulated route between two coordinates with curved intermediate
+ * points that approximate road-like paths (no OSRM call needed).
+ */
+function generateSimulatedRoute(
+  from: Coordinates,
+  to: Coordinates,
+  numPoints: number = 18
+): Coordinates[] {
+  const points: Coordinates[] = [from];
+
+  // Seeded-ish random that stays stable across renders for a given pair
+  const seed = Math.abs(from.lat * 1000 + to.lng * 1000) % 1;
+  const rng = (i: number): number =>
+    ((Math.sin(seed * 9999 + i * 7919) * 43758.5453) % 1 + 1) % 1;
+
+  for (let i = 1; i < numPoints; i++) {
+    const t = i / numPoints;
+    // Base linear interpolation
+    const baseLat = from.lat + (to.lat - from.lat) * t;
+    const baseLng = from.lng + (to.lng - from.lng) * t;
+
+    // Perpendicular offset for curve (stronger in the middle, fades at ends)
+    const curveFactor = Math.sin(t * Math.PI) * 0.012; // ~1.3 km max offset
+    const perpLat = -(to.lng - from.lng); // perpendicular direction
+    const perpLng = to.lat - from.lat;
+    const perpLen = Math.sqrt(perpLat ** 2 + perpLng ** 2) || 1;
+
+    // Combine a smooth curve with small random jitter to look road-like
+    const jitterLat = (rng(i * 2) - 0.5) * 0.003;
+    const jitterLng = (rng(i * 2 + 1) - 0.5) * 0.003;
+
+    points.push({
+      lat: baseLat + (perpLat / perpLen) * curveFactor + jitterLat,
+      lng: baseLng + (perpLng / perpLen) * curveFactor + jitterLng,
+    });
+  }
+
+  points.push(to);
+  return points;
+}
+
+/**
+ * Find the hospital geographically closest to a given location.
+ */
+function findNearestHospital(location: Coordinates) {
+  let best = hospitals[0];
+  let bestDist = Infinity;
+  for (const h of hospitals) {
+    const d =
+      (h.location.lat - location.lat) ** 2 +
+      (h.location.lng - location.lng) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = h;
+    }
+  }
+  return best;
+}
+
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>("Emergencies");
   const stats = getDashboardStats();
@@ -58,6 +119,53 @@ export default function DashboardPage() {
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
     .slice(0, 5);
+
+  // ---- Generate active dispatch routes ----
+  const activeRoutes = useMemo(() => {
+    const routes: Array<{
+      id: string;
+      coordinates: Coordinates[];
+      color: string;
+      label?: string;
+    }> = [];
+
+    // Find dispatched / en_route ambulances
+    const dispatchedAmbulances = ambulances.filter(
+      (a) => a.status === "dispatched" || a.status === "en_route"
+    );
+
+    // Find in_progress / dispatched emergencies
+    const ongoingEmergencies = emergencyHistory.filter(
+      (e) => e.status === "in_progress" || e.status === "dispatched"
+    );
+
+    // Build up to 3 route pairs (ambulance -> emergency, emergency -> hospital)
+    const limit = Math.min(3, dispatchedAmbulances.length, ongoingEmergencies.length);
+
+    for (let i = 0; i < limit; i++) {
+      const amb = dispatchedAmbulances[i];
+      const emg = ongoingEmergencies[i];
+      const hospital = findNearestHospital(emg.location);
+
+      // Leg 1: Ambulance -> Emergency (cyan)
+      routes.push({
+        id: `route-to-patient-${amb.id}`,
+        coordinates: generateSimulatedRoute(amb.location, emg.location, 16),
+        color: "#06b6d4",
+        label: `${amb.callSign} -> Patient`,
+      });
+
+      // Leg 2: Emergency -> Hospital (green)
+      routes.push({
+        id: `route-to-hospital-${amb.id}`,
+        coordinates: generateSimulatedRoute(emg.location, hospital.location, 18),
+        color: "#22c55e",
+        label: `Patient -> ${hospital.name.split(" ")[0]}`,
+      });
+    }
+
+    return routes;
+  }, []);
 
   return (
     <main className="flex-1 overflow-y-auto">
@@ -113,6 +221,7 @@ export default function DashboardPage() {
               ambulances={ambulances}
               hospitals={hospitals}
               emergencies={activeEmergencies}
+              activeRoutes={activeRoutes}
             />
           </div>
 
