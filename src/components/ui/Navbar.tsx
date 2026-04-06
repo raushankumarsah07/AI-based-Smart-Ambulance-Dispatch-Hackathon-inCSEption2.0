@@ -1,14 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Activity } from "lucide-react";
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dispatch", label: "Dispatch" },
   { href: "/analytics", label: "Analytics" },
+  { href: "/register", label: "Register" },
 ];
 
 export default function Navbar() {
@@ -19,11 +20,18 @@ export default function Navbar() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent transition-shadow group-hover:shadow-[0_0_12px_var(--accent-glow)]">
-            <Activity className="h-5 w-5" />
+          <div className="overflow-hidden rounded-lg ring-1 ring-accent/20 transition-shadow group-hover:shadow-[0_0_12px_var(--accent-glow)]">
+            <Image
+              src="/smartresq-logo.svg"
+              alt="SmartResQ logo"
+              width={36}
+              height={36}
+              className="h-9 w-9"
+              priority
+            />
           </div>
           <span className="gradient-text text-xl font-bold tracking-tight">
-            SmartAmbSys
+            SmartResQ
           </span>
         </Link>
 

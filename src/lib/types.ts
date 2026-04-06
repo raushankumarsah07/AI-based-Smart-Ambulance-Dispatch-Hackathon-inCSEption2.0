@@ -1,5 +1,5 @@
 // ============================================
-// SmartAmbSys - Core Type Definitions
+// SmartResQ - Core Type Definitions
 // ============================================
 
 export type SeverityLevel = "P1" | "P2" | "P3" | "P4";

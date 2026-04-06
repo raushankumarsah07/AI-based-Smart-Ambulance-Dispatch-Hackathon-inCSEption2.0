@@ -38,7 +38,8 @@ function ScoreBar({ label, value, color = "#06b6d4" }: ScoreBarProps) {
     return () => clearTimeout(t);
   }, []);
 
-  const pct = Math.round(value * 100);
+  const normalized = value > 1 ? value / 100 : value;
+  const pct = Math.round(Math.max(0, Math.min(1, normalized)) * 100);
 
   return (
     <div className="mb-2.5 last:mb-0">
@@ -91,6 +92,10 @@ export default function DispatchResultCard({
     at_hospital: "text-blue-400",
   };
 
+  const displayTotalScore = Math.round(
+    score.totalScore > 1 ? score.totalScore : score.totalScore * 100
+  );
+
   return (
     <div
       className={cn(
@@ -123,7 +128,7 @@ export default function DispatchResultCard({
               isTopPick ? "text-cyan-400" : "text-gray-200"
             )}
           >
-            {Math.round(score.totalScore * 100)}
+            {displayTotalScore}
           </span>
         </div>
       </div>

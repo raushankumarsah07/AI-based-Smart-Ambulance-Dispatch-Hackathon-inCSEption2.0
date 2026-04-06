@@ -55,6 +55,10 @@ body {
   background: #0a0f1c !important;
   border-radius: 12px;
 }
+
+.location-picker-map.leaflet-container {
+  background: #f8fafc !important;
+}
 .leaflet-control-zoom a {
   background: var(--card) !important;
   color: var(--foreground) !important;

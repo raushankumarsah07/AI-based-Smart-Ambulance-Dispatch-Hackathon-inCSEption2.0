@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -14,9 +17,91 @@ import {
   Leaf,
   Cpu,
   Radio,
+  Siren,
+  Loader2,
 } from "lucide-react";
 
 export default function Home() {
+  const [sosLoading, setSosLoading] = useState(false);
+  const [sosMessage, setSosMessage] = useState<string | null>(null);
+  const [sosError, setSosError] = useState<string | null>(null);
+
+  async function triggerSosDispatch() {
+    if (sosLoading) return;
+
+    setSosLoading(true);
+    setSosMessage(null);
+    setSosError(null);
+
+    try {
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        setSosError("Location is not supported in this browser.");
+        return;
+      }
+
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+      });
+
+      const lat = Number(position.coords.latitude.toFixed(6));
+      const lng = Number(position.coords.longitude.toFixed(6));
+      let address = `SOS near ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+      try {
+        const reverse = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+          { headers: { Accept: "application/json" } }
+        );
+        if (reverse.ok) {
+          const data = (await reverse.json()) as { display_name?: string };
+          if (typeof data.display_name === "string" && data.display_name.trim().length > 0) {
+            address = data.display_name;
+          }
+        }
+      } catch {
+        // Keep coordinate-based fallback address.
+      }
+
+      const response = await fetch("/api/dispatch/sos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng, address }),
+      });
+
+      const data = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        ambulance?: { callSign?: string };
+        estimatedArrivalMinutes?: number;
+      };
+
+      if (!response.ok || !data.ok) {
+        setSosError(data.error || "Unable to dispatch SOS ambulance right now.");
+        return;
+      }
+
+      setSosMessage(
+        `SOS sent. ${data.ambulance?.callSign || "Nearest ambulance"} is dispatched (ETA ${data.estimatedArrivalMinutes || "-"} min).`
+      );
+
+      if (typeof window !== "undefined") {
+          window.localStorage.setItem(
+            "smartresq:dispatch-confirmed",
+          JSON.stringify({ emergencyId: `sos-${Date.now()}`, timestamp: Date.now() })
+        );
+          window.dispatchEvent(new Event("smartresq:dispatch-confirmed"));
+      }
+    } catch {
+      setSosError("Location access denied or unavailable. Please enable location and try again.");
+    } finally {
+      setSosLoading(false);
+    }
+  }
+
   return (
     <main className="flex flex-1 flex-col">
       {/* ───────── Hero Section ───────── */}
@@ -65,7 +150,36 @@ export default function Home() {
             <Zap className="h-4 w-4 text-accent" />
             New Dispatch
           </Link>
+          <button
+            type="button"
+            onClick={() => void triggerSosDispatch()}
+            disabled={sosLoading}
+            className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/15 px-7 py-3.5 text-sm font-semibold text-red-300 transition-all hover:bg-red-500/25 hover:shadow-[0_0_16px_rgba(239,68,68,0.35)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {sosLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sending SOS...
+              </>
+            ) : (
+              <>
+                <Siren className="h-4 w-4" />
+                SOS
+              </>
+            )}
+          </button>
         </div>
+
+        {sosMessage && (
+          <p className="relative mt-4 max-w-2xl rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+            {sosMessage}
+          </p>
+        )}
+        {sosError && (
+          <p className="relative mt-4 max-w-2xl rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-300">
+            {sosError}
+          </p>
+        )}
       </section>
 
       {/* ───────── Stats Bar ───────── */}
@@ -215,7 +329,7 @@ export default function Home() {
               Aligned with <span className="gradient-text">UN SDGs</span>
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-muted">
-              SmartAmbSys contributes to sustainable development through
+              SmartResQ contributes to sustainable development through
               technology-driven emergency healthcare optimization.
             </p>
           </div>
@@ -275,7 +389,7 @@ export default function Home() {
           <div className="flex items-center gap-2">
             <Heart className="h-4 w-4 text-danger" />
             <span className="text-sm text-muted">
-              <span className="font-semibold text-foreground">SmartAmbSys</span>{" "}
+              <span className="font-semibold text-foreground">SmartResQ</span>{" "}
               &mdash; AI-Powered Emergency Response
             </span>
           </div>

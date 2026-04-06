@@ -1,5 +1,5 @@
 // ============================================
-// SmartAmbSys - Simulation Data for Delhi, India
+// SmartResQ - Simulation Data for Delhi, India
 // ============================================
 
 import type {

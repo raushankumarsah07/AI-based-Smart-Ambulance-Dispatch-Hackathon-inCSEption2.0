@@ -18,6 +18,7 @@ interface DashboardMapProps {
   ambulances: Ambulance[];
   hospitals: Hospital[];
   emergencies: Emergency[];
+  center?: Coordinates;
   activeRoute?: Coordinates[];
   activeRoutes?: ActiveRoute[];
 }
@@ -26,12 +27,17 @@ export default function DashboardMap({
   ambulances,
   hospitals,
   emergencies,
+  center,
   activeRoute,
   activeRoutes,
 }: DashboardMapProps) {
   return (
     <div className="relative h-full w-full">
-      <MapContainer>
+      <MapContainer
+        center={center ? [center.lat, center.lng] : undefined}
+        zoom={12}
+        theme="light"
+      >
         {hospitals.map((hospital) => (
           <HospitalMarker key={hospital.id} hospital={hospital} />
         ))}

@@ -1,5 +1,5 @@
 // ============================================
-// SmartAmbSys - OSRM Routing Service
+// SmartResQ - OSRM Routing Service
 // Real road-following routes via the free
 // OSRM (Open Source Routing Machine) demo API
 // ============================================

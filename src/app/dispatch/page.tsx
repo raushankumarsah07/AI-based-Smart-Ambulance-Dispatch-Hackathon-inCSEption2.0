@@ -14,6 +14,7 @@ import EmergencyForm from "@/components/dispatch/EmergencyForm";
 import TriageResultCard from "@/components/dispatch/TriageResultCard";
 import DispatchResultCard from "@/components/dispatch/DispatchResultCard";
 import { triageEmergency } from "@/lib/triage-engine";
+import { generateId, haversineDistance, randomCoordinate } from "@/lib/utils";
 import type {
   TriageResult,
   DispatchScore,
@@ -29,6 +30,8 @@ const RouteMapPanel = dynamic(
   () => import("@/components/dispatch/RouteMapPanel"),
   { ssr: false }
 );
+
+const DISPATCH_LOCALIZATION_THRESHOLD_KM = 120;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fallback demo data — used when simulation-data / dispatch-algorithm are not
@@ -145,11 +148,11 @@ function generateFallbackScores(
 ): DispatchScore[] {
   return ambulances.map((amb, i) => {
     const hosp = hospitals[i % hospitals.length];
-    const distScore = 0.6 + Math.random() * 0.4;
-    const trafficScore = 0.5 + Math.random() * 0.5;
-    const equipScore = 0.5 + Math.random() * 0.5;
-    const hospMatchScore = 0.4 + Math.random() * 0.6;
-    const fuelScore = amb.fuelLevel / 100;
+    const distScore = 60 + Math.random() * 40;
+    const trafficScore = 50 + Math.random() * 50;
+    const equipScore = 60 + Math.random() * 40;
+    const hospMatchScore = 55 + Math.random() * 45;
+    const fuelScore = amb.fuelLevel;
 
     const total =
       distScore * 0.3 +
@@ -178,6 +181,57 @@ function generateFallbackScores(
   });
 }
 
+function nearestDistanceKm(from: Coordinates, candidates: Coordinates[]): number {
+  if (candidates.length === 0) return Number.POSITIVE_INFINITY;
+  return candidates.reduce((best, c) => Math.min(best, haversineDistance(from, c)), Number.POSITIVE_INFINITY);
+}
+
+function buildLocalizedHospitals(center: Coordinates): Hospital[] {
+  const templates = [
+    { name: "City General Hospital", specializations: ["General", "Trauma", "Cardiac"] as Specialization[], rating: 4.4 },
+    { name: "Metro Trauma Center", specializations: ["Trauma", "Neuro", "General"] as Specialization[], rating: 4.5 },
+    { name: "Lifeline Cardiac Institute", specializations: ["Cardiac", "General", "Neuro"] as Specialization[], rating: 4.6 },
+    { name: "Regional Medical Center", specializations: ["General", "Burns", "Pediatric"] as Specialization[], rating: 4.3 },
+    { name: "Emergency Care Multispecialty", specializations: ["Trauma", "Cardiac", "Burns", "Pediatric", "General"] as Specialization[], rating: 4.7 },
+    { name: "Community Health Hospital", specializations: ["General", "Pediatric", "Neuro"] as Specialization[], rating: 4.2 },
+  ];
+
+  return templates.map((t, idx) => ({
+    id: `local-h-${generateId()}-${idx}`,
+    name: t.name,
+    location: randomCoordinate(center, 8),
+    specializations: t.specializations,
+    totalBeds: 300 + idx * 80,
+    availableBeds: 30 + Math.floor(Math.random() * 90),
+    icuBeds: 20 + idx * 10,
+    icuAvailable: 3 + Math.floor(Math.random() * 12),
+    emergencyBeds: 20 + idx * 8,
+    emergencyAvailable: 4 + Math.floor(Math.random() * 10),
+    rating: t.rating,
+    contactNumber: "+91-00000-00000",
+    isActive: true,
+  }));
+}
+
+function buildLocalizedAmbulances(center: Coordinates): Ambulance[] {
+  return Array.from({ length: 10 }, (_, idx) => {
+    const isAls = idx < 4;
+    return {
+      id: `local-a-${generateId()}-${idx}`,
+      callSign: `LOC-${String(idx + 1).padStart(2, "0")}`,
+      type: isAls ? "ALS" : "BLS",
+      status: "available",
+      location: randomCoordinate(center, 6),
+      speed: 42 + Math.floor(Math.random() * 18),
+      fuelLevel: 55 + Math.floor(Math.random() * 45),
+      equipment: isAls
+        ? ["Defibrillator (AED)", "Trauma Kit", "IV Access Kit", "Oxygen Supply", "Cardiac Monitor"]
+        : ["First Aid Kit", "Oxygen Supply", "IV Access Kit", "Blood Pressure Monitor"],
+      crew: isAls ? ["Paramedic Lead", "Driver"] : ["EMT", "Driver"],
+    };
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Page state types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,6 +249,28 @@ interface FormData {
   manualSpecialization?: Specialization;
 }
 
+interface RecommendationPayload {
+  rank: number;
+  ambulanceId: string;
+  ambulanceCallSign: string;
+  hospitalId: string;
+  hospitalName: string;
+  totalScore: number;
+  estimatedArrivalMinutes: number;
+  distanceKm: number;
+}
+
+interface PersistEmergencyContext {
+  emergencyId: string;
+  callerName: string;
+  callerPhone: string;
+  description: string;
+  address: string;
+  location: Coordinates;
+  triage: TriageResult;
+  recommendations: RecommendationPayload[];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Dispatch Page
 // ─────────────────────────────────────────────────────────────────────────────
@@ -205,6 +281,8 @@ export default function DispatchPage() {
   const [dispatchResults, setDispatchResults] = useState<DispatchScore[]>([]);
   const [confirmedIndex, setConfirmedIndex] = useState<number | null>(null);
   const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null);
+  const [activeEmergencyId, setActiveEmergencyId] = useState<string | null>(null);
+  const [persistContext, setPersistContext] = useState<PersistEmergencyContext | null>(null);
 
   // Route map state
   const [routeData, setRouteData] = useState<{
@@ -232,8 +310,68 @@ export default function DispatchPage() {
     return hospitals.find((h) => h.id === id) || hospitals[0];
   }
 
+  async function persistAnalyzeRecord(payload: {
+    emergencyId: string;
+    callerName: string;
+    callerPhone: string;
+    description: string;
+    address: string;
+    location: Coordinates;
+    triage: TriageResult;
+    recommendations: Array<{
+      rank: number;
+      ambulanceId: string;
+      ambulanceCallSign: string;
+      hospitalId: string;
+      hospitalName: string;
+      totalScore: number;
+      estimatedArrivalMinutes: number;
+      distanceKm: number;
+    }>;
+  }) {
+    try {
+      await fetch("/api/dispatch/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Keep UI functional even if local DB is down.
+    }
+  }
+
+  async function persistConfirmedDispatch(payload: {
+    emergencyId: string;
+    selectedRank: number;
+    ambulanceId: string;
+    ambulanceCallSign: string;
+    hospitalId: string;
+    hospitalName: string;
+    estimatedArrivalMinutes: number;
+    distanceKm: number;
+    callerName?: string;
+    callerPhone?: string;
+    description?: string;
+    address?: string;
+    location?: Coordinates;
+    triage?: TriageResult;
+    recommendations?: RecommendationPayload[];
+  }) {
+    try {
+      await fetch("/api/dispatch/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Keep UI functional even if local DB is down.
+    }
+  }
+
   // ─── Submit handler ────────────────────────────────────────────────────────
   async function handleSubmit(data: FormData) {
+    const emergencyId = `em-${Date.now()}`;
+
     // Phase 1: Triage
     setPhase("triaging");
     setTriageResult(null);
@@ -241,6 +379,8 @@ export default function DispatchPage() {
     setConfirmedIndex(null);
     setRouteData(null);
     setRouteLoading(false);
+    setActiveEmergencyId(emergencyId);
+    setPersistContext(null);
     setEmergencyCoords({ lat: data.lat, lng: data.lng });
 
     // Artificial delay for demo
@@ -291,11 +431,24 @@ export default function DispatchPage() {
 
       usedAmbulances = dataMod.ambulances || DEMO_AMBULANCES;
       usedHospitals = dataMod.hospitals || DEMO_HOSPITALS;
+
+      const nearestHospitalKm = nearestDistanceKm(
+        { lat: data.lat, lng: data.lng },
+        usedHospitals.map((h) => h.location)
+      );
+
+      // If configured data is from another city (e.g., Delhi) and emergency is far away,
+      // create localized resources around the emergency to keep dispatch practical.
+      if (nearestHospitalKm > DISPATCH_LOCALIZATION_THRESHOLD_KM) {
+        usedHospitals = buildLocalizedHospitals({ lat: data.lat, lng: data.lng });
+        usedAmbulances = buildLocalizedAmbulances({ lat: data.lat, lng: data.lng });
+      }
+
       setAmbulances(usedAmbulances);
       setHospitals(usedHospitals);
 
       const emergencyObj: Emergency = {
-        id: `em-${Date.now()}`,
+        id: emergencyId,
         callerName: data.callerName,
         callerPhone: data.callerPhone,
         description: data.description,
@@ -318,8 +471,39 @@ export default function DispatchPage() {
 
     // Sort by total score descending, pick top 3
     scores.sort((a, b) => b.totalScore - a.totalScore);
-    setDispatchResults(scores.slice(0, 3));
+    const topRecommendations = scores.slice(0, 3);
+    setDispatchResults(topRecommendations);
     setPhase("dispatch_done");
+
+    const recommendationsPayload: RecommendationPayload[] = topRecommendations.map((rec, idx) => {
+      const recAmb = usedAmbulances.find((a) => a.id === rec.ambulanceId) || usedAmbulances[0];
+      const recHosp = usedHospitals.find((h) => h.id === rec.hospitalId) || usedHospitals[0];
+
+      return {
+        rank: idx + 1,
+        ambulanceId: rec.ambulanceId,
+        ambulanceCallSign: recAmb?.callSign || "Unknown",
+        hospitalId: rec.hospitalId,
+        hospitalName: recHosp?.name || "Unknown",
+        totalScore: rec.totalScore,
+        estimatedArrivalMinutes: rec.estimatedArrivalMinutes,
+        distanceKm: rec.distanceKm,
+      };
+    });
+
+    const contextPayload: PersistEmergencyContext = {
+      emergencyId,
+      callerName: data.callerName,
+      callerPhone: data.callerPhone,
+      description: data.description,
+      address: data.address,
+      location: { lat: data.lat, lng: data.lng },
+      triage,
+      recommendations: recommendationsPayload,
+    };
+
+    setPersistContext(contextPayload);
+    void persistAnalyzeRecord(contextPayload);
   }
 
   // ─── Confirm dispatch ──────────────────────────────────────────────────────
@@ -336,6 +520,34 @@ export default function DispatchPage() {
 
       const selectedAmbulance = findAmbulance(selectedScore.ambulanceId);
       const selectedHospital = findHospital(selectedScore.hospitalId);
+
+      if (activeEmergencyId) {
+        void persistConfirmedDispatch({
+          emergencyId: activeEmergencyId,
+          selectedRank: index + 1,
+          ambulanceId: selectedScore.ambulanceId,
+          ambulanceCallSign: selectedAmbulance.callSign,
+          hospitalId: selectedScore.hospitalId,
+          hospitalName: selectedHospital.name,
+          estimatedArrivalMinutes: selectedScore.estimatedArrivalMinutes,
+          distanceKm: selectedScore.distanceKm,
+          callerName: persistContext?.callerName,
+          callerPhone: persistContext?.callerPhone,
+          description: persistContext?.description,
+          address: persistContext?.address,
+          location: persistContext?.location,
+          triage: persistContext?.triage,
+          recommendations: persistContext?.recommendations,
+        });
+
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(
+            "smartresq:dispatch-confirmed",
+            JSON.stringify({ emergencyId: activeEmergencyId, timestamp: Date.now() })
+          );
+          window.dispatchEvent(new Event("smartresq:dispatch-confirmed"));
+        }
+      }
 
       setRouteLoading(true);
       try {

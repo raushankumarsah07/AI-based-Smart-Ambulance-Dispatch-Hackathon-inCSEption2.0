@@ -1,5 +1,5 @@
 // ============================================
-// SmartAmbSys - AI Triage Engine
+// SmartResQ - AI Triage Engine
 // Keyword-based emergency triage classifier
 // ============================================
 

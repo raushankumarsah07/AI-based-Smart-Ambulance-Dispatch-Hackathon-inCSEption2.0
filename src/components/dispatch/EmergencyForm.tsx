@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Phone,
   User,
@@ -13,6 +14,18 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SeverityLevel, Specialization } from "@/lib/types";
+
+const LocationMapPicker = dynamic(
+  () => import("@/components/dispatch/LocationMapPicker"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-lg border border-gray-700 bg-gray-900 p-3 text-xs text-gray-400">
+        Loading map...
+      </div>
+    ),
+  }
+);
 
 interface EmergencyFormData {
   callerName: string;
@@ -66,6 +79,58 @@ export default function EmergencyForm({ onSubmit, isLoading = false }: Emergency
   const [manualSeverity, setManualSeverity] = useState<SeverityLevel | "">("");
   const [manualSpecialization, setManualSpecialization] = useState<Specialization | "">("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [mapOpen, setMapOpen] = useState(false);
+
+  async function getAddressFromCoords(nextLat: number, nextLng: number): Promise<string | undefined> {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${nextLat}&lon=${nextLng}`,
+        {
+          headers: { Accept: "application/json" },
+        }
+      );
+      if (!response.ok) return undefined;
+
+      const data = (await response.json()) as { display_name?: string };
+      return data.display_name;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function handleUseMapClick() {
+    const nextOpen = !mapOpen;
+    setMapOpen(nextOpen);
+
+    if (!nextOpen || typeof navigator === "undefined" || !navigator.geolocation) {
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const nextLat = Number(position.coords.latitude.toFixed(6));
+        const nextLng = Number(position.coords.longitude.toFixed(6));
+
+        setLat(nextLat);
+        setLng(nextLng);
+
+        const resolvedAddress = await getAddressFromCoords(nextLat, nextLng);
+        if (resolvedAddress) {
+          setAddress(resolvedAddress);
+        } else if (!address.trim()) {
+          setAddress("Current Location");
+        }
+      },
+      () => {
+        // If permission is denied, map still opens at the current form coordinates.
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
+      }
+    );
+  }
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
@@ -202,15 +267,41 @@ export default function EmergencyForm({ onSubmit, isLoading = false }: Emergency
             />
             <button
               type="button"
+              onClick={handleUseMapClick}
               className="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-cyan-500 hover:text-cyan-400"
-              title="Use map picker (coming soon)"
+              title="Pick location on map"
             >
               <Map className="h-3.5 w-3.5" />
-              Use Map
+              {mapOpen ? "Hide Map" : "Use Map"}
             </button>
           </div>
           {errors.location && (
             <p className="mt-1.5 text-xs text-red-400">{errors.location}</p>
+          )}
+          {mapOpen && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-gray-700 bg-gray-900">
+              <LocationMapPicker
+                value={{ lat, lng }}
+                onChange={({ lat: nextLat, lng: nextLng, address: nextAddress }) => {
+                  setLat(nextLat);
+                  setLng(nextLng);
+
+                  if (nextAddress) {
+                    setAddress(nextAddress);
+                  } else if (!address.trim()) {
+                    setAddress(`${nextLat.toFixed(5)}, ${nextLng.toFixed(5)}`);
+                  }
+
+                  if (errors.location) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.location;
+                      return next;
+                    });
+                  }
+                }}
+              />
+            </div>
           )}
         </div>
 

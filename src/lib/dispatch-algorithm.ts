@@ -1,5 +1,5 @@
 // ============================================
-// SmartAmbSys - AI Dispatch Algorithm
+// SmartResQ - AI Dispatch Algorithm
 // Multi-factor weighted scoring for optimal
 // ambulance-hospital dispatch pairing
 // ============================================
