@@ -1,0 +1,2 @@
+MONGODB_URI = mongodb+srv://smartresq_user:Smart%4012345@cluster0.kvulq5a.mongodb.net/AI_Smart_Ambulance_Dispatch_Prod?retryWrites=true&w=majority&appName=Cluster0
+MONGODB_DB_NAME = AI_Smart_Ambulance_Dispatch_Prod

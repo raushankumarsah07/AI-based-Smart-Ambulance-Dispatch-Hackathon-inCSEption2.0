@@ -482,11 +482,21 @@ export default function RegisterPage() {
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
+        details?: string;
+        hint?: string;
         registrationId?: string;
       };
 
       if (!response.ok || !data.ok) {
-        setError(data.error || "Unable to submit registration.");
+        const messageParts = [data.error, data.details, data.hint]
+          .filter((part): part is string => Boolean(part && part.trim()))
+          .map((part) => part.trim());
+
+        setError(
+          messageParts.length > 0
+            ? messageParts.join(" ")
+            : "Unable to submit registration."
+        );
         return;
       }
 
