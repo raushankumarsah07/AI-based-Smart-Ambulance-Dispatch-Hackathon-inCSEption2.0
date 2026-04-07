@@ -224,11 +224,39 @@ export async function POST(request: Request) {
       distanceKm: Number(bestDistanceKm.toFixed(2)),
     });
   } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : "Unknown error";
+    const normalized = rawMessage.toLowerCase();
+
+    let hint: string | undefined;
+    if (
+      normalized.includes("authentication failed") ||
+      normalized.includes("bad auth") ||
+      normalized.includes("auth")
+    ) {
+      hint =
+        "Atlas authentication failed. Update MONGODB_URI in Vercel with the latest URL-encoded password, then redeploy.";
+    } else if (
+      normalized.includes("not authorized") ||
+      normalized.includes("permission")
+    ) {
+      hint =
+        "Atlas user permission issue. Grant readWrite access for the target database to your database user.";
+    } else if (
+      normalized.includes("ip") ||
+      normalized.includes("network") ||
+      normalized.includes("timed out") ||
+      normalized.includes("econn")
+    ) {
+      hint =
+        "Atlas network access issue. Add 0.0.0.0/0 (or allowlist required IPs) in Atlas Network Access.";
+    }
+
     return NextResponse.json(
       {
         ok: false,
         error: "Failed to trigger SOS dispatch",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: rawMessage,
+        hint,
       },
       { status: 500 }
     );

@@ -75,12 +75,22 @@ export default function Home() {
       const data = (await response.json()) as {
         ok?: boolean;
         error?: string;
+        details?: string;
+        hint?: string;
         ambulance?: { callSign?: string };
         estimatedArrivalMinutes?: number;
       };
 
       if (!response.ok || !data.ok) {
-        setSosError(data.error || "Unable to dispatch SOS ambulance right now.");
+        const messageParts = [data.error, data.details, data.hint]
+          .filter((part): part is string => Boolean(part && part.trim()))
+          .map((part) => part.trim());
+
+        setSosError(
+          messageParts.length > 0
+            ? messageParts.join(" ")
+            : "Unable to dispatch SOS ambulance right now."
+        );
         return;
       }
 
