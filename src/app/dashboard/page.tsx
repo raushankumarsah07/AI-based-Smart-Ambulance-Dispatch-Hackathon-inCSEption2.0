@@ -17,6 +17,7 @@ import Badge from "@/components/ui/Badge";
 import AmbulanceList from "@/components/dashboard/AmbulanceList";
 import EmergencyList from "@/components/dashboard/EmergencyList";
 import HospitalList from "@/components/dashboard/HospitalList";
+import Chatbot from "@/components/ui/Chatbot";
 import {
   Activity,
   Ambulance,
@@ -638,6 +639,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Chatbot */}
+      <Chatbot />
     </main>
   );
 }
