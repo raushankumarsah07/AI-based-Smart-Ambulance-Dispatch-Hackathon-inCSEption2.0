@@ -23,7 +23,7 @@ export default function Navbar() {
           <div className="overflow-hidden rounded-lg ring-1 ring-accent/20 transition-shadow group-hover:shadow-[0_0_12px_var(--accent-glow)]">
             <Image
               src="/smartresq-logo.svg"
-              alt="SmartResQ logo"
+              alt="SRQ logo"
               width={36}
               height={36}
               className="h-9 w-9"
@@ -31,7 +31,7 @@ export default function Navbar() {
             />
           </div>
           <span className="gradient-text text-xl font-bold tracking-tight">
-            SmartResQ
+            SRQ
           </span>
         </Link>
 
